@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Boxes,
   BrainCircuit,
@@ -11,6 +12,7 @@ import {
   Play,
   Radio,
   ShieldCheck,
+  Target,
   TrendingUp
 } from "lucide-react";
 import {
@@ -28,7 +30,18 @@ import {
 } from "recharts";
 import { fetchDashboard } from "./api";
 import { formatCompact, formatCurrency, formatMetric, labelForStrategy } from "./format";
-import type { BacktestRow, DashboardData, MetricCard, ModelComparison } from "./types";
+import type {
+  AgentSignal,
+  BacktestRow,
+  DashboardData,
+  LiveFeed,
+  MarketRegime,
+  MetricCard,
+  ModelComparison,
+  PaperPortfolio,
+  RiskState,
+  TrainingSession
+} from "./types";
 
 const chartColors: Record<string, string> = {
   buy_hold: "#67E8F9",
@@ -40,6 +53,14 @@ const chartColors: Record<string, string> = {
 export function App() {
   const [ticker, setTicker] = useState("AAPL");
   const [data, setData] = useState<DashboardData | null>(null);
+  const [liveFeed, setLiveFeed] = useState<LiveFeed | null>(null);
+  const [paperPortfolio, setPaperPortfolio] = useState<PaperPortfolio | null>(null);
+  const [risk, setRisk] = useState<RiskState | null>(null);
+  const [marketRegime, setMarketRegime] = useState<MarketRegime | null>(null);
+  const [agentSignal, setAgentSignal] = useState<AgentSignal | null>(null);
+  const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
+  const [connection, setConnection] = useState<"connecting" | "streaming" | "reconnecting" | "polling">("connecting");
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +70,16 @@ export function App() {
     setError(null);
     fetchDashboard(ticker)
       .then((payload) => {
-        if (!cancelled) setData(payload);
+        if (!cancelled) {
+          setData(payload);
+          setLiveFeed(payload.liveFeed);
+          setPaperPortfolio(payload.paperPortfolio);
+          setRisk(payload.risk);
+          setMarketRegime(payload.marketRegime);
+          setAgentSignal(payload.agentExplainability);
+          setTrainingSessions(payload.trainingSessions);
+          setLastUpdate(payload.liveFeed.asOf);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Dashboard unavailable");
@@ -61,6 +91,46 @@ export function App() {
       cancelled = true;
     };
   }, [ticker]);
+
+  useEffect(() => {
+    if (!data) return;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let closedByEffect = false;
+    const connect = () => {
+      setConnection((current) => (current === "streaming" ? current : "connecting"));
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${protocol}://${window.location.hostname}:8000/ws/live/${ticker}`);
+      socket.onopen = () => setConnection("streaming");
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (!message.events) return;
+        for (const update of message.events) {
+          if (update.type === "PRICE_UPDATE") {
+            setLiveFeed(update.payload);
+            setLastUpdate(update.payload.asOf);
+          }
+          if (update.type === "PAPER_TRADE_UPDATE") setPaperPortfolio(update.payload);
+          if (update.type === "RISK_UPDATE") setRisk(update.payload);
+          if (update.type === "REGIME_UPDATE") setMarketRegime(update.payload);
+          if (update.type === "AGENT_SIGNAL") setAgentSignal(update.payload);
+          if (update.type === "EXPERIMENT_UPDATE") setTrainingSessions(update.payload);
+        }
+      };
+      socket.onerror = () => setConnection("polling");
+      socket.onclose = () => {
+        if (closedByEffect) return;
+        setConnection("reconnecting");
+        reconnectTimer = window.setTimeout(connect, 2500);
+      };
+    };
+    connect();
+    return () => {
+      closedByEffect = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [data, ticker]);
 
   const topBacktests = useMemo(() => {
     if (!data) return [];
@@ -86,11 +156,20 @@ export function App() {
   return (
     <Shell>
       <main className="min-h-screen flex-1 overflow-y-auto px-5 py-5 lg:px-7">
-        <TopBar data={data} ticker={ticker} setTicker={setTicker} isLoading={isLoading} />
-        {data ? (
+        <TopBar
+          data={data}
+          ticker={ticker}
+          setTicker={setTicker}
+          isLoading={isLoading}
+          connection={connection}
+          lastUpdate={lastUpdate}
+        />
+        {data && liveFeed && paperPortfolio && risk && marketRegime && agentSignal ? (
           <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
             <section className="space-y-5">
+              <LiveMarketPanel feed={liveFeed} />
               <PortfolioHeader data={data} />
+              <PaperPortfolioPanel portfolio={paperPortfolio} />
               <MetricGrid metrics={data.metrics} />
               <Panel title="Equity Curve" icon={<LineChart size={17} />} action={data.portfolio.strategy}>
                 <div className="h-[330px]">
@@ -140,11 +219,16 @@ export function App() {
                 </Panel>
               </div>
               <BacktestTable rows={topBacktests} />
+              <StrategyHeatmapPanel data={data} />
+              <TrainingSessionsPanel sessions={trainingSessions} />
             </section>
             <aside className="space-y-5">
+              <RiskPanel risk={risk} />
+              <RegimePanel regime={marketRegime} />
+              <ExplainabilityPanel signal={agentSignal} />
               <ModelComparisonPanel models={data.modelComparison} />
               <ExperimentPanel data={data} />
-              <TradeTimeline events={data.tradeTimeline} />
+              <PaperTradeTimeline trades={paperPortfolio.trades} />
               <InferencePanel data={data} />
               <Safeguards items={data.safeguards} />
             </aside>
@@ -192,12 +276,16 @@ function TopBar({
   data,
   ticker,
   setTicker,
-  isLoading
+  isLoading,
+  connection,
+  lastUpdate
 }: {
   data: DashboardData | null;
   ticker: string;
   setTicker: (ticker: string) => void;
   isLoading: boolean;
+  connection: "connecting" | "streaming" | "reconnecting" | "polling";
+  lastUpdate: string | null;
 }) {
   return (
     <header className="flex flex-col gap-4 border-b border-slate-800/70 pb-5 lg:flex-row lg:items-center lg:justify-between">
@@ -212,6 +300,8 @@ function TopBar({
               <span>{data?.mode.dataSource ?? "Local trading intelligence API"}</span>
               <span className="h-1 w-1 rounded-full bg-slate-600" />
               <span>{data?.mode.label ?? "Loading"}</span>
+              <span className="h-1 w-1 rounded-full bg-slate-600" />
+              <span>{data?.liveFeed.mode ?? "Feed pending"}</span>
               {data?.mode.vecNormalize ? <span className="status-chip cyan">VecNormalize</span> : null}
             </div>
           </div>
@@ -231,7 +321,11 @@ function TopBar({
         </select>
         <div className="status-chip emerald">
           <span className={`h-2 w-2 rounded-full ${isLoading ? "bg-amber-300" : "bg-emerald-300"}`} />
-          {isLoading ? "Syncing" : "Online"}
+          {connection === "streaming" ? "Streaming" : connection}
+        </div>
+        <div className="hidden text-right text-xs text-slate-500 sm:block">
+          <div>Last update</div>
+          <div className="text-slate-300">{lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : "pending"}</div>
         </div>
       </div>
     </header>
@@ -273,6 +367,256 @@ function MetricGrid({ metrics }: { metrics: MetricCard[] }) {
         </div>
       ))}
     </section>
+  );
+}
+
+function LiveMarketPanel({ feed }: { feed: LiveFeed }) {
+  const positive = feed.change >= 0;
+  return (
+    <section className="panel p-5">
+      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-cyan-200">{feed.symbol}</div>
+              <div className="mt-2 text-3xl font-semibold text-white">{formatCurrency(feed.price)}</div>
+            </div>
+            <span className="status-chip cyan">{feed.mode}</span>
+          </div>
+          <div className={`mt-3 text-sm font-semibold ${positive ? "text-emerald-300" : "text-rose-300"}`}>
+            {positive ? "+" : ""}
+            {feed.change.toFixed(2)} ({formatMetric(feed.percentChange, "percent")})
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <MiniStat label="Source bar" value={feed.sourceTimestamp} />
+            <MiniStat label="Updated" value={new Date(feed.asOf).toLocaleTimeString()} />
+          </div>
+        </div>
+        <div className="h-[160px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ReLineChart data={feed.history} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+              <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
+              <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={26} />
+              <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} width={54} domain={["dataMin", "dataMax"]} />
+              <Tooltip content={<ChartTooltip />} />
+              <Line type="monotone" dataKey="price" stroke="#67E8F9" strokeWidth={2.2} dot={false} name="Price" />
+            </ReLineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PaperPortfolioPanel({ portfolio }: { portfolio: PaperPortfolio }) {
+  const pnl = portfolio.realizedPnl + portfolio.unrealizedPnl;
+  return (
+    <Panel title="Paper Portfolio" icon={<Target size={17} />} action={portfolio.mode}>
+      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid grid-cols-2 gap-3">
+          <MiniStat label="Cash" value={formatCurrency(portfolio.cash)} />
+          <MiniStat label="Total equity" value={formatCurrency(portfolio.totalEquity)} />
+          <MiniStat label="Position" value={`${portfolio.positionShares.toFixed(3)} sh`} />
+          <MiniStat label="Exposure" value={formatMetric(portfolio.exposure, "percent")} />
+          <MiniStat label="Realized PnL" value={formatCurrency(portfolio.realizedPnl)} />
+          <MiniStat label="Unrealized PnL" value={formatCurrency(portfolio.unrealizedPnl)} />
+        </div>
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <span className={`status-chip ${pnl >= 0 ? "emerald" : "amber"}`}>{portfolio.currentAction}</span>
+            <span className="text-xs text-slate-500">
+              Cost {(portfolio.executionAssumptions.transactionCost * 100).toFixed(2)}% + slippage {(portfolio.executionAssumptions.slippage * 100).toFixed(2)}%
+            </span>
+          </div>
+          <div className="h-[170px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={portfolio.equityCurve} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="paperEquity" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#34D399" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="#34D399" stopOpacity={0.04} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
+                <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={26} />
+                <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={formatCompact} width={50} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="equity" stroke="#34D399" fill="url(#paperEquity)" strokeWidth={2} name="Paper Equity" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function RiskPanel({ risk }: { risk: RiskState }) {
+  const tone = risk.status === "Normal" ? "emerald" : risk.status === "Warning" ? "amber" : "rose";
+  return (
+    <Panel title="Risk Management" icon={<AlertTriangle size={17} />}>
+      <div className="mb-4 flex items-center justify-between">
+        <span className={`status-chip ${tone === "rose" ? "amber" : tone}`}>{risk.status}</span>
+        <span className="text-xs text-slate-500">{risk.mode}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <MiniStat label="Current DD" value={formatMetric(risk.currentDrawdown, "percent")} />
+        <MiniStat label="Max DD" value={formatMetric(risk.maxDrawdown, "percent")} />
+        <MiniStat label="Volatility" value={formatMetric(risk.volatility, "percent")} />
+        <MiniStat label="Kill switch" value={risk.killSwitchActive ? "Active" : "Armed"} />
+      </div>
+      <div className="mt-4 space-y-2">
+        {risk.guardrails.map((rule) => (
+          <div key={rule.name} className="flex items-center justify-between rounded-lg border border-slate-800 bg-graphite-900/70 px-3 py-2 text-xs">
+            <span className="text-slate-300">{rule.name}</span>
+            <span className={rule.passing ? "text-emerald-300" : "text-amber-300"}>{rule.passing ? "Pass" : "Breach"}</span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function RegimePanel({ regime }: { regime: MarketRegime }) {
+  return (
+    <Panel title="Current Market Regime" icon={<Gauge size={17} />}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-lg font-semibold text-white">{regime.label}</div>
+          <div className="mt-1 text-xs text-cyan-200">{regime.method}</div>
+        </div>
+        <span className="status-chip cyan">{formatMetric(regime.confidence, "percent")}</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-400">{regime.explanation}</p>
+      <div className="mt-4 space-y-2">
+        {regime.factors.map((factor) => (
+          <div key={factor.name} className="flex items-center justify-between text-xs">
+            <span className="text-slate-400">{factor.name}</span>
+            <span className="text-slate-200">{factor.status}</span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function ExplainabilityPanel({ signal }: { signal: AgentSignal }) {
+  return (
+    <Panel title="Why This Action?" icon={<BrainCircuit size={17} />}>
+      <div className="flex items-center justify-between">
+        <span className="text-2xl font-semibold text-white">{signal.action}</span>
+        <span className="status-chip cyan">{signal.mode}</span>
+      </div>
+      <div className="mt-2 text-sm text-slate-400">
+        Target exposure {formatMetric(signal.targetExposure, "percent")} | confidence {formatMetric(signal.confidence, "percent")}
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-400">{signal.rationale}</p>
+      <div className="mt-4 space-y-2">
+        {signal.signals.map((item) => (
+          <div key={item.name} className="rounded-lg border border-slate-800 bg-graphite-900/70 px-3 py-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-300">{item.name}</span>
+              <span className="text-cyan-200">{item.interpretation}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function StrategyHeatmapPanel({ data }: { data: DashboardData }) {
+  const labels: Record<string, string> = {
+    annualized_return: "Return",
+    sharpe: "Sharpe",
+    sortino: "Sortino",
+    max_drawdown: "Max DD",
+    volatility: "Vol",
+    win_rate: "Win",
+    number_of_trades: "Trades",
+    profit_factor: "Profit Factor",
+    calmar: "Calmar"
+  };
+  return (
+    <Panel title="Strategy Comparison Heatmap" icon={<BarChart3 size={17} />}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[880px] border-separate border-spacing-1 text-left text-xs">
+          <thead className="text-slate-500">
+            <tr>
+              <th className="sticky left-0 z-10 bg-graphite-900 px-3 py-2 font-medium">Strategy</th>
+              {data.strategyHeatmap.metrics.map((metric) => (
+                <th key={metric} className="px-3 py-2 font-medium">
+                  {labels[metric] ?? metric}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.strategyHeatmap.rows.map((row) => (
+              <tr key={row.strategy}>
+                <td className="sticky left-0 z-10 min-w-[154px] rounded-lg border border-slate-800 bg-graphite-900 px-3 py-2">
+                  <div className="font-semibold text-slate-100">{row.strategy}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">{row.status}</div>
+                </td>
+                {data.strategyHeatmap.metrics.map((metric) => {
+                  const value = row.metrics[metric];
+                  return (
+                    <td key={`${row.strategy}-${metric}`} className={`rounded-lg border px-3 py-2 ${heatmapCellClass(metric, value)}`}>
+                      {value === null ? <span className="text-slate-500">Awaiting checkpoint</span> : metricDisplay(metric, value)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 text-xs leading-5 text-slate-500">
+        PPO and SAC cells remain empty until local checkpoint-backed evaluations exist. Baseline rows come from the repository backtest reports.
+      </div>
+    </Panel>
+  );
+}
+
+function TrainingSessionsPanel({ sessions }: { sessions: TrainingSession[] }) {
+  return (
+    <Panel title="Training Session Manager" icon={<Activity size={17} />}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500">
+            <tr className="border-b border-slate-800">
+              <th className="pb-3 font-medium">Algorithm</th>
+              <th className="pb-3 font-medium">Asset</th>
+              <th className="pb-3 font-medium">Timesteps</th>
+              <th className="pb-3 font-medium">Reward</th>
+              <th className="pb-3 font-medium">Status</th>
+              <th className="pb-3 font-medium">Checkpoint</th>
+              <th className="pb-3 font-medium">Best Metric</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.map((session) => (
+              <tr key={session.id} className="border-b border-slate-900 text-slate-300">
+                <td className="py-3 font-semibold text-slate-100">{session.algorithm}</td>
+                <td className="py-3">{session.ticker}</td>
+                <td className="py-3">{formatCompact(session.timesteps)}</td>
+                <td className="py-3">{session.rewardFunction}</td>
+                <td className="py-3">
+                  <span className={`status-chip ${session.status === "completed" ? "emerald" : session.status === "failed" ? "amber" : "cyan"}`}>
+                    {session.status}
+                  </span>
+                </td>
+                <td className="py-3">{session.checkpointAvailable ? "Available" : "Awaiting checkpoint"}</td>
+                <td className="py-3">{session.bestValidationMetric === null ? "N/A" : session.bestValidationMetric.toFixed(3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 text-xs leading-5 text-slate-500">
+        This manager reflects local configs and checkpoint artifacts first; it does not simulate live training progress.
+      </div>
+    </Panel>
   );
 }
 
@@ -361,6 +705,40 @@ function TradeTimeline({ events }: { events: DashboardData["tradeTimeline"] }) {
           </div>
         ))}
       </div>
+    </Panel>
+  );
+}
+
+function PaperTradeTimeline({ trades }: { trades: PaperPortfolio["trades"] }) {
+  return (
+    <Panel title="Paper Trade Timeline" icon={<TrendingUp size={17} />} action="paper">
+      {trades.length === 0 ? (
+        <div className="rounded-lg border border-slate-800 bg-graphite-900/60 p-4 text-sm leading-6 text-slate-400">
+          No paper trades in the current replay window. The simulator only records fills after cost-aware exposure changes.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {trades
+            .slice()
+            .reverse()
+            .map((trade) => (
+              <div key={`${trade.timestamp}-${trade.side}-${trade.price}-${trade.shares}`} className="relative border-l border-slate-800 pl-4">
+                <div className={`absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full ${trade.side === "BUY" ? "bg-emerald-300" : "bg-rose-300"}`} />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-slate-100">
+                    {trade.side} <span className="text-xs text-slate-500">paper</span>
+                  </div>
+                  <div className="text-xs text-slate-500">{trade.timestamp}</div>
+                </div>
+                <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-slate-400">
+                  <span>{Math.abs(trade.shares).toFixed(3)} sh</span>
+                  <span>{formatCurrency(trade.price)}</span>
+                  <span className="text-right">Cost {formatCurrency(trade.cost)}</span>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
     </Panel>
   );
 }
@@ -492,6 +870,30 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <div className="mt-1 truncate text-sm font-medium text-slate-100">{value}</div>
     </div>
   );
+}
+
+function metricDisplay(metric: string, value: number): string {
+  if (["annualized_return", "max_drawdown", "volatility", "win_rate"].includes(metric)) {
+    return formatMetric(value, "percent");
+  }
+  if (metric === "number_of_trades") return value.toFixed(0);
+  return value.toFixed(2);
+}
+
+function heatmapCellClass(metric: string, value: number | null): string {
+  if (value === null) return "border-slate-800 bg-graphite-900/70";
+  if (metric === "max_drawdown") {
+    const intensity = Math.min(Math.abs(value) / 0.35, 1);
+    return intensity > 0.45
+      ? "border-rose-300/25 bg-rose-400/15 text-rose-100"
+      : "border-emerald-300/20 bg-emerald-400/10 text-emerald-100";
+  }
+  if (metric === "volatility" || metric === "number_of_trades") {
+    const high = metric === "volatility" ? value > 0.32 : value > 35;
+    return high ? "border-amber-300/25 bg-amber-400/12 text-amber-100" : "border-slate-700 bg-graphite-900/70 text-slate-200";
+  }
+  const positive = value > 0;
+  return positive ? "border-emerald-300/25 bg-emerald-400/12 text-emerald-100" : "border-rose-300/25 bg-rose-400/12 text-rose-100";
 }
 
 function ChartTooltip({ active, payload, label, percentKeys = [] }: any) {

@@ -2,19 +2,31 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import yaml
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents.baselines import buy_and_hold, momentum_strategy, random_agent, sma_crossover
-from data.downloader import DEFAULT_TICKERS, load_ticker_data
-from data.preprocessor import split_data
+from data.downloader import DEFAULT_TICKERS
 from evaluation.metrics import max_drawdown
+from backend.quant_product import (
+    build_agent_signal,
+    build_live_feed,
+    build_product_context,
+    build_strategy_heatmap,
+    build_training_sessions,
+    detect_market_regime,
+    evaluate_risk,
+    normalize_ticker,
+    simulate_paper_portfolio,
+    websocket_event_bundle,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = ROOT / "reports"
@@ -41,10 +53,8 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/dashboard")
-def dashboard(ticker: str = Query(default="AAPL")) -> dict[str, Any]:
-    normalized_ticker = ticker.upper()
-    if normalized_ticker == "BTC_USD":
-        normalized_ticker = "BTC-USD"
+def dashboard(ticker: str = Query(default="AAPL"), cursor: int | None = Query(default=None)) -> dict[str, Any]:
+    normalized_ticker = normalize_ticker(ticker)
     if normalized_ticker not in DEFAULT_TICKERS:
         raise HTTPException(status_code=404, detail=f"Unsupported ticker: {ticker}")
 
@@ -54,17 +64,30 @@ def dashboard(ticker: str = Query(default="AAPL")) -> dict[str, Any]:
     if ticker_benchmarks.empty:
         raise HTTPException(status_code=404, detail=f"No benchmark report for ticker: {normalized_ticker}")
 
-    df = load_ticker_data(ticker=normalized_ticker, cache_dir=ROOT / "cache")
-    _, _, test_df = split_data(df)
+    context = build_product_context(normalized_ticker, ROOT, cursor=cursor)
+    test_df = context.test_data
     strategy_curves = _strategy_curves(test_df)
     best_row = ticker_benchmarks.sort_values(["sharpe", "annualized_return"], ascending=False).iloc[0]
     selected_strategy = str(best_row["strategy"])
     selected_curve = strategy_curves.get(selected_strategy, strategy_curves["buy_hold"])
+    live_feed = build_live_feed(context)
+    preliminary_signal = build_agent_signal(context)
+    paper_portfolio = simulate_paper_portfolio(context, preliminary_signal)
+    risk = evaluate_risk(paper_portfolio, context)
+    agent_signal = build_agent_signal(context, risk["status"])
+    if agent_signal["action"] != preliminary_signal["action"]:
+        paper_portfolio = simulate_paper_portfolio(context, agent_signal)
+        risk = evaluate_risk(paper_portfolio, context)
 
     return {
         "mode": _runtime_mode(),
         "ticker": normalized_ticker,
         "tickers": DEFAULT_TICKERS,
+        "liveFeed": live_feed,
+        "paperPortfolio": paper_portfolio,
+        "risk": risk,
+        "marketRegime": detect_market_regime(context),
+        "agentExplainability": agent_signal,
         "portfolio": _portfolio_summary(selected_curve, best_row),
         "metrics": _metric_cards(best_row),
         "equityCurve": _serialize_curves(strategy_curves),
@@ -74,8 +97,23 @@ def dashboard(ticker: str = Query(default="AAPL")) -> dict[str, Any]:
         "tradeTimeline": _trade_timeline(strategy_curves[selected_strategy], selected_strategy),
         "trainingAnalytics": _training_analytics(),
         "experiments": _experiment_overview(),
+        "trainingSessions": build_training_sessions(ROOT),
+        "strategyHeatmap": build_strategy_heatmap(benchmarks, normalized_ticker, MODELS_DIR),
         "inferenceDemo": _inference_demo(test_df, selected_curve, selected_strategy),
         "dataManifest": _records(manifest),
+        "realtime": {
+            "transport": "websocket",
+            "endpoint": f"/ws/live/{normalized_ticker}",
+            "fallback": "polling /api/dashboard",
+            "eventTypes": [
+                "PRICE_UPDATE",
+                "PAPER_TRADE_UPDATE",
+                "RISK_UPDATE",
+                "REGIME_UPDATE",
+                "AGENT_SIGNAL",
+                "EXPERIMENT_UPDATE",
+            ],
+        },
         "safeguards": [
             "Indicator warm-up rows are dropped, not backward-filled.",
             "2024 is reserved for out-of-sample evaluation.",
@@ -83,6 +121,7 @@ def dashboard(ticker: str = Query(default="AAPL")) -> dict[str, Any]:
             "Transaction costs and slippage are included in trading simulation.",
             "Benchmark reports use realized trade segments for trade metrics.",
             "Dashboard values are evaluation/demo telemetry unless checkpoint-backed mode is active.",
+            "Paper trading simulation never routes real-money orders.",
         ],
     }
 
@@ -95,7 +134,50 @@ def backtests() -> dict[str, Any]:
 
 @app.get("/api/experiments")
 def experiments() -> dict[str, Any]:
-    return {"models": _model_comparison(), "experiments": _experiment_overview()}
+    return {
+        "models": _model_comparison(),
+        "experiments": _experiment_overview(),
+        "sessions": build_training_sessions(ROOT),
+    }
+
+
+@app.get("/api/live/{ticker}")
+def live_snapshot(ticker: str, cursor: int | None = Query(default=None)) -> dict[str, Any]:
+    try:
+        context = build_product_context(ticker, ROOT, cursor=cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    bundle = websocket_event_bundle(context.ticker, ROOT, cursor=context.cursor)
+    return {
+        "ticker": context.ticker,
+        "cursor": bundle["cursor"],
+        "events": bundle["events"],
+    }
+
+
+@app.websocket("/ws/live/{ticker}")
+async def live_websocket(websocket: WebSocket, ticker: str) -> None:
+    await websocket.accept()
+    try:
+        normalized_ticker = normalize_ticker(ticker)
+        cursor = None
+        while True:
+            bundle = websocket_event_bundle(normalized_ticker, ROOT, cursor=cursor)
+            await websocket.send_json(
+                {
+                    "ticker": normalized_ticker,
+                    "cursor": bundle["cursor"],
+                    "events": bundle["events"],
+                    "transport": "websocket",
+                },
+            )
+            cursor = bundle["cursor"] + 1
+            await asyncio.sleep(2.0)
+    except WebSocketDisconnect:
+        return
+    except ValueError as exc:
+        await websocket.send_json({"type": "ERROR", "detail": str(exc)})
+        await websocket.close()
 
 
 def _load_manifest() -> pd.DataFrame:
@@ -193,7 +275,7 @@ def _model_status(name: str, config: dict[str, Any], candidates: list[str]) -> d
         "timesteps": config.get("training", {}).get("total_timesteps", 1_000_000),
         "learningRate": hyperparameters.get("learning_rate"),
         "checkpoint": existing[0] if existing else None,
-            "notes": "Uses saved VecNormalize stats for evaluation." if existing else "Train model to populate checkpoint-backed metrics.",
+        "notes": "Uses saved VecNormalize stats for evaluation." if existing else "Train model to populate checkpoint-backed metrics.",
     }
 
 

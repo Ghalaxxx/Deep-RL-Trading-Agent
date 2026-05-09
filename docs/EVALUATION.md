@@ -21,6 +21,8 @@ Costs are applied when exposure changes, so high-turnover policies are penalized
 
 SMA and momentum reports include the same combined `0.15%` position-change cost. Buy & Hold is represented as one open trade over the test period, so its trade-level win rate is intentionally shown as `N/A` in the product dashboard. Return, Sharpe, volatility, and drawdown are more meaningful for one-trade benchmarks.
 
+The paper trading dashboard uses the same default assumptions: `0.1%` transaction cost and `0.05%` slippage per simulated fill. It should be read as a product/inference demonstration, not as a replacement for the formal backtester.
+
 ## Exposure And Leverage
 
 The trading environment uses continuous target exposure in `[-1, 1]`:
@@ -30,6 +32,20 @@ The trading environment uses continuous target exposure in `[-1, 1]`:
 - `+1` means fully long
 
 The default setup does not use leverage above one-times notional exposure. This keeps early experiments focused on policy quality rather than leverage-amplified returns. Any future leverage support should add explicit margin, financing, borrow, and liquidation constraints before being used in reported results.
+
+The paper engine currently caps target exposure at `75%` notional, does not enable leverage, and prevents long purchases that would require negative cash. Short exposure is simulated for product realism, but the current model does not include borrow fees, locate constraints, margin interest, or forced buy-ins.
+
+## Risk Management Semantics
+
+The dashboard risk panel is a paper-trading guardrail layer:
+
+- daily loss limit: `-3%`
+- max exposure: `75%`
+- position limit: `100%`
+- stop-loss threshold: `-8%`
+- max drawdown guardrail: `-12%`
+
+If a halt-level rule is breached, the paper engine flattens target exposure and the dashboard shows a halted risk state. This is a realistic control pattern for demos, but it is not a complete institutional risk system. A production system would require independent limit services, durable audit logs, exchange calendars, borrow/margin accounting, and approval workflows.
 
 ## Normalization Consistency
 
@@ -61,6 +77,14 @@ The dashboard has two runtime modes:
 - `Checkpoint-backed`: becomes available when trained model artifacts are present under `models/`.
 
 Reward/training analytics are not simulated. If no checkpoint or training telemetry is available, the panel shows an awaiting-telemetry state instead of drawing artificial learning curves.
+
+The strategy comparison heatmap follows the same rule: PPO/SAC cells show `Awaiting checkpoint` until local model artifacts and evaluation outputs exist. Baseline rows come from generated benchmark reports.
+
+## Regime and Explainability Semantics
+
+Market regime detection is heuristic, not predictive modeling. It combines moving-average slope, rolling volatility, price-vs-moving-average state, and drawdown behavior to produce labels such as trending up, trending down, sideways, volatility expansion, and volatility compression.
+
+The action explanation panel is also heuristic unless a trained checkpoint is integrated. It summarizes momentum, RSI, volatility, risk status, and target exposure. This helps demo the decision interface while avoiding claims that a trained PPO/SAC policy produced the signal.
 
 ## Responsible Reporting
 
