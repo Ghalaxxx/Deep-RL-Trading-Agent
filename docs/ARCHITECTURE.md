@@ -32,7 +32,7 @@ flowchart LR
 - `TradingEnv` exposes a continuous target exposure action, which lets PPO and SAC learn position sizing instead of selecting from a tiny discrete menu.
 - Observations include only current and past data. Rolling indicators are computed forward in time and backtesting uses walk-forward splits to avoid future leakage.
 - Rewards are switchable so experiments can compare raw risk-adjusted PnL against Sharpe and Sortino shaping.
-- Evaluation is separated from training. Backtesting, metrics, replay, and visualization live under `evaluation/` so the training code does not become a reporting script.
+- Evaluation is separated from training. Backtesting, metrics, replay, and visualization reside under `evaluation/` so the training code does not become a reporting script.
 - Policies trained with `VecNormalize` are evaluated and replayed with saved normalization statistics when `models/vecnormalize.pkl` is present.
 
 ## System Safeguards
@@ -75,7 +75,7 @@ The FastAPI + React dashboard is a deployment-oriented view over the ML system:
 
 `backend/quant_product.py` owns the historical replay product state. The default implementation uses cached 2024 out-of-sample test-period bars as a `Historical Market Stream`. This gives the dashboard event-driven update semantics without implying current market streaming.
 
-An opt-in yfinance delayed snapshot path is available with `RL_TRADING_FEED_MODE=snapshot`; if it cannot fetch data, the product remains safe to run in historical replay mode.
+An opt-in yfinance delayed snapshot path is available with `RL_TRADING_FEED_MODE=snapshot`; `RL_TRADING_FEED_MODE=live` is accepted as a compatibility alias but still renders as delayed snapshot mode. If snapshot data cannot be fetched, the product remains safe to run in historical replay mode.
 
 The primary transport is:
 

@@ -50,7 +50,7 @@ Open `http://127.0.0.1:5173`.
 
 Demo the product in this order:
 
-1. Select a symbol and show the Historical Replay Engine. Call out the feed label, usually `Historical Market Stream`, and the source bar date from the 2024 out-of-sample test split. Optional yfinance delayed snapshot mode can be enabled with `RL_TRADING_FEED_MODE=snapshot`.
+1. Select a symbol and show the Historical Replay Engine. Call out the feed label, usually `Historical Market Stream`, and the source bar date from the 2024 out-of-sample test split. Optional yfinance delayed snapshot mode can be enabled with `RL_TRADING_FEED_MODE=snapshot`; if `RL_TRADING_FEED_MODE=live` is used, the UI still labels it as delayed snapshot mode.
 2. Show the paper portfolio panel: cash, exposure, PnL, equity curve, and paper execution assumptions.
 3. Show risk management: drawdown, volatility, limits, risk status, and guardrail pass/fail states.
 4. Show market regime and `Why this action?`, explicitly describing them as heuristic unless checkpoint inference is available.

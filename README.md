@@ -83,20 +83,74 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
-![Dashboard overview with Historical Replay Engine](docs/assets/dashboard-overview.png)
-
-Mobile-responsive view:
-
-![Dashboard mobile Historical Replay view](docs/assets/dashboard-mobile.png)
+<p align="center">
+  <img src="docs/assets/dashboard-overview.png" alt="Dashboard overview with Historical Replay Engine" width="920">
+</p>
 
 The dashboard includes a Historical Replay Engine, paper portfolio, equity curves, drawdown visualization, risk management guardrails, market regime detection, action explainability, PPO/SAC readiness, training session manager, strategy heatmap, experiment tracking, trade timeline, validation guardrails, and inference demo mode. In demo mode, panels are explicitly based on benchmark reports and local cached data rather than trained model claims.
 
 The product layer is deliberately not a real-money trading system:
 
 - `Historical Market Stream` replays cached 2024 out-of-sample market bars through the dashboard update loop.
-- `Delayed Market Snapshot` can be attempted with yfinance by setting `RL_TRADING_FEED_MODE=snapshot`; historical replay remains the default for reproducible demos.
+- `Delayed Market Snapshot` can be attempted with yfinance by setting `RL_TRADING_FEED_MODE=snapshot`; `RL_TRADING_FEED_MODE=live` is accepted as a compatibility alias but is still labeled as delayed snapshot mode in the UI.
 - `Paper trading simulation` applies transaction costs and slippage, tracks exposure and PnL, and blocks additional exposure when risk limits are breached.
 - PPO/SAC performance panels show `Awaiting checkpoint` until trained model artifacts and evaluation outputs exist.
+
+## Visual Walkthrough
+
+### Historical Replay Engine
+
+The market panel names the data basis directly: cached 2024 out-of-sample bars replayed through the product event loop. It does not present historical data as current-market streaming.
+
+<p align="center">
+  <img src="docs/assets/dashboard-replay-engine.png" alt="Historical Replay Engine panel" width="860">
+</p>
+
+### Paper Portfolio
+
+The paper portfolio shows cash, position, exposure, realized/unrealized PnL, total equity, costs, slippage, and simulated fills. It never implies broker execution.
+
+<p align="center">
+  <img src="docs/assets/dashboard-paper-portfolio.png" alt="Paper portfolio panel" width="860">
+</p>
+
+### Risk And Regime
+
+Risk guardrails, regime detection, and action explanation are displayed as engineering controls and heuristic diagnostics, not profitability claims.
+
+<p align="center">
+  <img src="docs/assets/dashboard-risk-regime.png" alt="Risk management, regime detection, and explainability panels" width="860">
+</p>
+
+### Strategy Comparison Heatmap
+
+PPO and SAC remain `Awaiting checkpoint` until real checkpoint-backed evaluations are available; baseline rows come from generated reports.
+
+<p align="center">
+  <img src="docs/assets/dashboard-strategy-heatmap.png" alt="Strategy comparison heatmap" width="860">
+</p>
+
+### PPO vs SAC
+
+The model comparison panel surfaces checkpoint readiness without inventing policy performance.
+
+<p align="center">
+  <img src="docs/assets/dashboard-ppo-sac.png" alt="PPO versus SAC readiness panel" width="620">
+</p>
+
+### Training Session Manager
+
+Training sessions are derived from local configs and checkpoint artifacts; the dashboard does not simulate running training progress.
+
+<p align="center">
+  <img src="docs/assets/dashboard-training-session-manager.png" alt="Training session manager" width="860">
+</p>
+
+### Mobile View
+
+<p align="center">
+  <img src="docs/assets/dashboard-mobile.png" alt="Mobile Historical Replay dashboard view" width="360">
+</p>
 
 ## Quick Start
 

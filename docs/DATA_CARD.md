@@ -58,7 +58,7 @@ The manifest is written to `reports/data_manifest.csv` and includes row counts, 
 The product API exposes feed mode labels so demos remain honest:
 
 - `Historical Market Stream`: cached 2024 out-of-sample bars replayed through `/api/replay/{ticker}` and `/ws/replay/{ticker}`.
-- `Delayed Market Snapshot`: optional yfinance snapshot mode, enabled with `RL_TRADING_FEED_MODE=snapshot`.
+- `Delayed Market Snapshot`: optional yfinance snapshot mode, enabled with `RL_TRADING_FEED_MODE=snapshot`. `RL_TRADING_FEED_MODE=live` is treated as a compatibility alias and still renders as delayed snapshot mode.
 - `Cached Demo Mode`: static local cache/report state without replay transport.
 
 The current implementation defaults to `Historical Market Stream` for selected symbols in the default universe. Delayed snapshot mode is intentionally opt-in so tests and demos remain reproducible when network data is unavailable or rate-limited.

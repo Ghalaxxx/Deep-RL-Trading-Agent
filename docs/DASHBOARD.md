@@ -11,7 +11,7 @@ Feed labels are separate from runtime mode:
 
 - `Historical Market Stream`: cached 2024 out-of-sample bars replayed through the market replay engine.
 - `Cached Demo Mode`: static local cache/report state.
-- `Delayed Market Snapshot`: optional yfinance snapshot mode, enabled with `RL_TRADING_FEED_MODE=snapshot`.
+- `Delayed Market Snapshot`: optional yfinance snapshot mode, enabled with `RL_TRADING_FEED_MODE=snapshot`. `RL_TRADING_FEED_MODE=live` is accepted as a compatibility alias, but the UI still labels it as delayed snapshot mode.
 
 ## Backend
 

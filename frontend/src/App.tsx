@@ -18,8 +18,6 @@ import {
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   Line,
   LineChart as ReLineChart,
@@ -165,8 +163,8 @@ export function App() {
           lastUpdate={lastUpdate}
         />
         {data && marketFeed && paperPortfolio && risk && marketRegime && agentSignal ? (
-          <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-            <section className="space-y-5">
+          <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+            <section className="space-y-6 pb-10">
               <MarketReplayPanel feed={marketFeed} />
               <PortfolioHeader data={data} />
               <PaperPortfolioPanel portfolio={paperPortfolio} />
@@ -174,10 +172,10 @@ export function App() {
               <Panel title="Equity Curve" icon={<LineChart size={17} />} action={data.portfolio.strategy}>
                 <div className="h-[330px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ReLineChart data={data.equityCurve} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                    <ReLineChart data={data.equityCurve} margin={{ top: 12, right: 24, left: 2, bottom: 4 }}>
                       <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fill: "#94A3B8", fontSize: 11 }} minTickGap={30} />
-                      <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={formatCompact} width={54} />
+                      <XAxis dataKey="date" tick={{ fill: "#94A3B8", fontSize: 11 }} minTickGap={54} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={formatCompact} width={58} tickLine={false} axisLine={false} />
                       <Tooltip content={<ChartTooltip />} />
                       {Object.keys(chartColors).map((strategy) => (
                         <Line
@@ -194,11 +192,11 @@ export function App() {
                   </ResponsiveContainer>
                 </div>
               </Panel>
-              <div className="grid gap-5 lg:grid-cols-2">
+              <div className="grid gap-6 lg:grid-cols-2">
                 <Panel title="Drawdown Surface" icon={<Gauge size={17} />}>
                   <div className="h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data.drawdownCurve} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+                      <AreaChart data={data.drawdownCurve} margin={{ top: 12, right: 18, left: -4, bottom: 4 }}>
                         <defs>
                           <linearGradient id="drawdownFill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#FB7185" stopOpacity={0.7} />
@@ -206,8 +204,8 @@ export function App() {
                           </linearGradient>
                         </defs>
                         <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
-                        <XAxis dataKey="date" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={32} />
-                        <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={(v) => `${(Number(v) * 100).toFixed(0)}%`} />
+                        <XAxis dataKey="date" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={58} tickLine={false} axisLine={false} />
+                        <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={(v) => `${(Number(v) * 100).toFixed(0)}%`} tickLine={false} axisLine={false} />
                         <Tooltip content={<ChartTooltip percentKeys={["drawdown"]} />} />
                         <Area type="monotone" dataKey="drawdown" stroke="#FB7185" fill="url(#drawdownFill)" strokeWidth={2} />
                       </AreaChart>
@@ -222,7 +220,7 @@ export function App() {
               <StrategyHeatmapPanel data={data} />
               <TrainingSessionsPanel sessions={trainingSessions} />
             </section>
-            <aside className="space-y-5">
+            <aside className="space-y-6 pb-10">
               <RiskPanel risk={risk} />
               <RegimePanel regime={marketRegime} />
               <ExplainabilityPanel signal={agentSignal} />
@@ -375,7 +373,7 @@ function MarketReplayPanel({ feed }: { feed: MarketFeed }) {
   const isHistorical = feed.sourceKind === "historical_replay";
   return (
     <section className="panel p-5">
-      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
+      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.4fr]">
         <div>
           <div className="mb-3 text-xs font-semibold uppercase text-slate-500">
             {isHistorical ? "Historical Replay Engine" : "Delayed Market Snapshot Mode"}
@@ -399,10 +397,10 @@ function MarketReplayPanel({ feed }: { feed: MarketFeed }) {
         </div>
         <div className="h-[160px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ReLineChart data={feed.history} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+            <ReLineChart data={feed.history} margin={{ top: 10, right: 16, left: -4, bottom: 4 }}>
               <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
-              <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={26} />
-              <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} width={54} domain={["dataMin", "dataMax"]} />
+              <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={44} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} width={58} domain={["dataMin", "dataMax"]} tickLine={false} axisLine={false} />
               <Tooltip content={<ChartTooltip />} />
               <Line type="monotone" dataKey="price" stroke="#67E8F9" strokeWidth={2.2} dot={false} name="Price" />
             </ReLineChart>
@@ -417,7 +415,7 @@ function PaperPortfolioPanel({ portfolio }: { portfolio: PaperPortfolio }) {
   const pnl = portfolio.realizedPnl + portfolio.unrealizedPnl;
   return (
     <Panel title="Paper Portfolio" icon={<Target size={17} />} action={portfolio.mode}>
-      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="grid grid-cols-2 gap-3">
           <MiniStat label="Cash" value={formatCurrency(portfolio.cash)} />
           <MiniStat label="Total equity" value={formatCurrency(portfolio.totalEquity)} />
@@ -435,7 +433,7 @@ function PaperPortfolioPanel({ portfolio }: { portfolio: PaperPortfolio }) {
           </div>
           <div className="h-[170px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={portfolio.equityCurve} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+              <AreaChart data={portfolio.equityCurve} margin={{ top: 10, right: 16, left: -4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="paperEquity" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#34D399" stopOpacity={0.5} />
@@ -443,8 +441,8 @@ function PaperPortfolioPanel({ portfolio }: { portfolio: PaperPortfolio }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
-                <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={26} />
-                <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={formatCompact} width={50} />
+                <XAxis dataKey="time" tick={{ fill: "#94A3B8", fontSize: 10 }} minTickGap={46} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={formatCompact} width={54} tickLine={false} axisLine={false} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area type="monotone" dataKey="equity" stroke="#34D399" fill="url(#paperEquity)" strokeWidth={2} name="Paper Equity" />
               </AreaChart>
@@ -545,7 +543,7 @@ function StrategyHeatmapPanel({ data }: { data: DashboardData }) {
   return (
     <Panel title="Strategy Comparison Heatmap" icon={<BarChart3 size={17} />}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[880px] border-separate border-spacing-1 text-left text-xs">
+        <table className="w-full min-w-[940px] border-separate border-spacing-1 text-left text-xs">
           <thead className="text-slate-500">
             <tr>
               <th className="sticky left-0 z-10 bg-graphite-900 px-3 py-2 font-medium">Strategy</th>
@@ -567,7 +565,7 @@ function StrategyHeatmapPanel({ data }: { data: DashboardData }) {
                   const value = row.metrics[metric];
                   return (
                     <td key={`${row.strategy}-${metric}`} className={`rounded-lg border px-3 py-2 ${heatmapCellClass(metric, value)}`}>
-                      {value === null ? <span className="text-slate-500">Awaiting checkpoint</span> : metricDisplay(metric, value)}
+                      {value === null ? <span className="text-slate-500">Awaiting</span> : metricDisplay(metric, value)}
                     </td>
                   );
                 })}
@@ -692,28 +690,6 @@ function ExperimentPanel({ data }: { data: DashboardData }) {
   );
 }
 
-function TradeTimeline({ events }: { events: DashboardData["tradeTimeline"] }) {
-  return (
-    <Panel title="Trade Timeline" icon={<TrendingUp size={17} />}>
-      <div className="space-y-3">
-        {events.map((event) => (
-          <div key={`${event.date}-${event.equity}`} className="relative border-l border-slate-800 pl-4">
-            <div className="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full bg-cyan-300" />
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-medium text-slate-100">{event.side}</div>
-              <div className="text-xs text-slate-500">{event.date}</div>
-            </div>
-            <div className="mt-1 flex justify-between text-xs text-slate-400">
-              <span>Position {event.position.toFixed(2)}</span>
-              <span>{formatCurrency(event.equity)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
 function PaperTradeTimeline({ trades }: { trades: PaperPortfolio["trades"] }) {
   return (
     <Panel title="Paper Trade Timeline" icon={<TrendingUp size={17} />} action="paper">
@@ -803,10 +779,10 @@ function TrainingAnalyticsPanel({ data }: { data: DashboardData }) {
   return (
     <div className="h-[260px]">
       <ResponsiveContainer width="100%" height="100%">
-        <ReLineChart data={analytics.points} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+        <ReLineChart data={analytics.points} margin={{ top: 12, right: 18, left: -4, bottom: 4 }}>
           <CartesianGrid stroke="#1F2B3B" strokeDasharray="3 3" />
-          <XAxis dataKey="step" tick={{ fill: "#94A3B8", fontSize: 10 }} tickFormatter={formatCompact} />
-          <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} />
+          <XAxis dataKey="step" tick={{ fill: "#94A3B8", fontSize: 10 }} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+          <YAxis tick={{ fill: "#94A3B8", fontSize: 11 }} tickLine={false} axisLine={false} />
           <Tooltip content={<ChartTooltip />} />
           <Line type="monotone" dataKey="ppoReward" stroke="#67E8F9" strokeWidth={2} dot={false} name="PPO Reward" />
           <Line type="monotone" dataKey="sacReward" stroke="#34D399" strokeWidth={2} dot={false} name="SAC Reward" />
