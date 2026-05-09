@@ -1,4 +1,4 @@
-"""Quant product services for live-feeling paper trading dashboard telemetry."""
+"""Quant product services for historical market replay and paper trading telemetry."""
 
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from evaluation.metrics import annualized_volatility, max_drawdown
 TRANSACTION_COST = 0.001
 SLIPPAGE = 0.0005
 TOTAL_EXECUTION_COST = TRANSACTION_COST + SLIPPAGE
-LIVE_CACHE_TTL = timedelta(seconds=60)
-_LIVE_FEED_CACHE: dict[str, tuple[datetime, dict[str, Any]]] = {}
+SNAPSHOT_CACHE_TTL = timedelta(seconds=60)
+_SNAPSHOT_FEED_CACHE: dict[str, tuple[datetime, dict[str, Any]]] = {}
 
 HEATMAP_METRICS: tuple[str, ...] = (
     "annualized_return",
@@ -71,18 +71,18 @@ def build_product_context(ticker: str, root: Path, cursor: int | None = None) ->
     )
 
 
-def build_live_feed(context: ProductContext) -> dict[str, Any]:
-    """Return a clearly-labeled market snapshot.
+def build_market_feed(context: ProductContext) -> dict[str, Any]:
+    """Return a clearly-labeled market replay or delayed snapshot.
 
-    The default is a deterministic simulated replay from cached bars. Set
-    RL_TRADING_FEED_MODE=live to attempt a yfinance near-live snapshot first.
+    The default is a deterministic historical replay from cached bars. Set
+    RL_TRADING_FEED_MODE=snapshot to attempt a delayed yfinance snapshot first.
     """
 
     feed_mode = os.environ.get("RL_TRADING_FEED_MODE", "replay").lower()
-    if feed_mode in {"live", "auto"}:
-        live_snapshot = _fetch_live_market_snapshot(context.ticker)
-        if live_snapshot is not None:
-            return live_snapshot
+    if feed_mode in {"snapshot", "delayed", "live", "auto"}:
+        market_snapshot = _fetch_delayed_market_snapshot(context.ticker)
+        if market_snapshot is not None:
+            return market_snapshot
 
     df = context.test_data
     row = df.iloc[context.cursor]
@@ -94,7 +94,10 @@ def build_live_feed(context: ProductContext) -> dict[str, Any]:
     history = df.iloc[max(0, context.cursor - 60) : context.cursor + 1]
 
     return {
-        "mode": "Simulated live replay",
+        "mode": "Historical Market Stream",
+        "sourceKind": "historical_replay",
+        "sourceLabel": "2024 out-of-sample historical bar",
+        "dataBasis": "Historical replay from the 2024 out-of-sample test split",
         "symbol": context.ticker,
         "price": round(price, 4),
         "previousClose": round(previous_close, 4),
@@ -113,10 +116,10 @@ def build_live_feed(context: ProductContext) -> dict[str, Any]:
     }
 
 
-def _fetch_live_market_snapshot(ticker: str) -> dict[str, Any] | None:
+def _fetch_delayed_market_snapshot(ticker: str) -> dict[str, Any] | None:
     now = datetime.now(timezone.utc)
-    cached = _LIVE_FEED_CACHE.get(ticker)
-    if cached is not None and now - cached[0] < LIVE_CACHE_TTL:
+    cached = _SNAPSHOT_FEED_CACHE.get(ticker)
+    if cached is not None and now - cached[0] < SNAPSHOT_CACHE_TTL:
         return cached[1]
 
     started = now
@@ -137,7 +140,10 @@ def _fetch_live_market_snapshot(ticker: str) -> dict[str, Any] | None:
     pct_change = change / previous if previous else 0.0
     latency_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
     payload = {
-        "mode": "Live market data",
+        "mode": "Delayed Market Snapshot",
+        "sourceKind": "delayed_snapshot",
+        "sourceLabel": "Delayed market snapshot from yfinance",
+        "dataBasis": "Experimental delayed snapshot mode; not broker-grade real-time data",
         "symbol": ticker,
         "price": round(latest, 4),
         "previousClose": round(previous, 4),
@@ -154,7 +160,7 @@ def _fetch_live_market_snapshot(ticker: str) -> dict[str, Any] | None:
             for index, value in close.items()
         ],
     }
-    _LIVE_FEED_CACHE[ticker] = (datetime.now(timezone.utc), payload)
+    _SNAPSHOT_FEED_CACHE[ticker] = (datetime.now(timezone.utc), payload)
     return payload
 
 
@@ -466,9 +472,9 @@ def build_strategy_heatmap(benchmarks: pd.DataFrame, ticker: str, models_dir: Pa
     return {"metrics": list(HEATMAP_METRICS), "rows": rows}
 
 
-def websocket_event_bundle(ticker: str, root: Path, cursor: int | None = None) -> dict[str, Any]:
+def market_replay_event_bundle(ticker: str, root: Path, cursor: int | None = None) -> dict[str, Any]:
     context = build_product_context(ticker, root, cursor)
-    live_feed = build_live_feed(context)
+    market_feed = build_market_feed(context)
     preliminary_signal = build_agent_signal(context)
     paper = simulate_paper_portfolio(context, preliminary_signal)
     risk = evaluate_risk(paper, context)
@@ -479,7 +485,7 @@ def websocket_event_bundle(ticker: str, root: Path, cursor: int | None = None) -
     return {
         "cursor": context.cursor,
         "events": [
-            {"type": "PRICE_UPDATE", "payload": live_feed},
+            {"type": "MARKET_REPLAY_UPDATE", "payload": market_feed},
             {"type": "PAPER_TRADE_UPDATE", "payload": paper},
             {"type": "RISK_UPDATE", "payload": risk},
             {"type": "REGIME_UPDATE", "payload": detect_market_regime(context)},

@@ -34,7 +34,7 @@ import type {
   AgentSignal,
   BacktestRow,
   DashboardData,
-  LiveFeed,
+  MarketFeed,
   MarketRegime,
   MetricCard,
   ModelComparison,
@@ -53,13 +53,13 @@ const chartColors: Record<string, string> = {
 export function App() {
   const [ticker, setTicker] = useState("AAPL");
   const [data, setData] = useState<DashboardData | null>(null);
-  const [liveFeed, setLiveFeed] = useState<LiveFeed | null>(null);
+  const [marketFeed, setMarketFeed] = useState<MarketFeed | null>(null);
   const [paperPortfolio, setPaperPortfolio] = useState<PaperPortfolio | null>(null);
   const [risk, setRisk] = useState<RiskState | null>(null);
   const [marketRegime, setMarketRegime] = useState<MarketRegime | null>(null);
   const [agentSignal, setAgentSignal] = useState<AgentSignal | null>(null);
   const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
-  const [connection, setConnection] = useState<"connecting" | "streaming" | "reconnecting" | "polling">("connecting");
+  const [connection, setConnection] = useState<"connecting" | "replay" | "reconnecting" | "polling">("connecting");
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,13 +72,13 @@ export function App() {
       .then((payload) => {
         if (!cancelled) {
           setData(payload);
-          setLiveFeed(payload.liveFeed);
+          setMarketFeed(payload.marketFeed);
           setPaperPortfolio(payload.paperPortfolio);
           setRisk(payload.risk);
           setMarketRegime(payload.marketRegime);
           setAgentSignal(payload.agentExplainability);
           setTrainingSessions(payload.trainingSessions);
-          setLastUpdate(payload.liveFeed.asOf);
+          setLastUpdate(payload.marketFeed.asOf);
         }
       })
       .catch((err: unknown) => {
@@ -98,16 +98,16 @@ export function App() {
     let reconnectTimer: number | undefined;
     let closedByEffect = false;
     const connect = () => {
-      setConnection((current) => (current === "streaming" ? current : "connecting"));
+      setConnection((current) => (current === "replay" ? current : "connecting"));
       const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${protocol}://${window.location.hostname}:8000/ws/live/${ticker}`);
-      socket.onopen = () => setConnection("streaming");
+      socket = new WebSocket(`${protocol}://${window.location.hostname}:8000/ws/replay/${ticker}`);
+      socket.onopen = () => setConnection("replay");
       socket.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (!message.events) return;
         for (const update of message.events) {
-          if (update.type === "PRICE_UPDATE") {
-            setLiveFeed(update.payload);
+          if (update.type === "MARKET_REPLAY_UPDATE") {
+            setMarketFeed(update.payload);
             setLastUpdate(update.payload.asOf);
           }
           if (update.type === "PAPER_TRADE_UPDATE") setPaperPortfolio(update.payload);
@@ -164,10 +164,10 @@ export function App() {
           connection={connection}
           lastUpdate={lastUpdate}
         />
-        {data && liveFeed && paperPortfolio && risk && marketRegime && agentSignal ? (
+        {data && marketFeed && paperPortfolio && risk && marketRegime && agentSignal ? (
           <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
             <section className="space-y-5">
-              <LiveMarketPanel feed={liveFeed} />
+              <MarketReplayPanel feed={marketFeed} />
               <PortfolioHeader data={data} />
               <PaperPortfolioPanel portfolio={paperPortfolio} />
               <MetricGrid metrics={data.metrics} />
@@ -284,7 +284,7 @@ function TopBar({
   ticker: string;
   setTicker: (ticker: string) => void;
   isLoading: boolean;
-  connection: "connecting" | "streaming" | "reconnecting" | "polling";
+  connection: "connecting" | "replay" | "reconnecting" | "polling";
   lastUpdate: string | null;
 }) {
   return (
@@ -301,7 +301,7 @@ function TopBar({
               <span className="h-1 w-1 rounded-full bg-slate-600" />
               <span>{data?.mode.label ?? "Loading"}</span>
               <span className="h-1 w-1 rounded-full bg-slate-600" />
-              <span>{data?.liveFeed.mode ?? "Feed pending"}</span>
+              <span>{data?.marketFeed.mode ?? "Replay feed pending"}</span>
               {data?.mode.vecNormalize ? <span className="status-chip cyan">VecNormalize</span> : null}
             </div>
           </div>
@@ -319,12 +319,12 @@ function TopBar({
             </option>
           ))}
         </select>
-        <div className="status-chip emerald">
-          <span className={`h-2 w-2 rounded-full ${isLoading ? "bg-amber-300" : "bg-emerald-300"}`} />
-          {connection === "streaming" ? "Streaming" : connection}
+        <div className="status-chip cyan">
+          <span className={`h-2 w-2 rounded-full ${isLoading ? "bg-amber-300" : "bg-cyan-300"}`} />
+          {connectionLabel(connection)}
         </div>
         <div className="hidden text-right text-xs text-slate-500 sm:block">
-          <div>Last update</div>
+          <div>Replay update</div>
           <div className="text-slate-300">{lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : "pending"}</div>
         </div>
       </div>
@@ -370,26 +370,31 @@ function MetricGrid({ metrics }: { metrics: MetricCard[] }) {
   );
 }
 
-function LiveMarketPanel({ feed }: { feed: LiveFeed }) {
+function MarketReplayPanel({ feed }: { feed: MarketFeed }) {
   const positive = feed.change >= 0;
+  const isHistorical = feed.sourceKind === "historical_replay";
   return (
     <section className="panel p-5">
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
         <div>
+          <div className="mb-3 text-xs font-semibold uppercase text-slate-500">
+            {isHistorical ? "Historical Replay Engine" : "Delayed Market Snapshot Mode"}
+          </div>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-cyan-200">{feed.symbol}</div>
               <div className="mt-2 text-3xl font-semibold text-white">{formatCurrency(feed.price)}</div>
             </div>
-            <span className="status-chip cyan">{feed.mode}</span>
+            <span className={`status-chip ${isHistorical ? "amber" : "cyan"}`}>{feed.mode}</span>
           </div>
+          <div className="mt-2 text-xs leading-5 text-slate-500">{feed.dataBasis}</div>
           <div className={`mt-3 text-sm font-semibold ${positive ? "text-emerald-300" : "text-rose-300"}`}>
             {positive ? "+" : ""}
             {feed.change.toFixed(2)} ({formatMetric(feed.percentChange, "percent")})
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <MiniStat label="Source bar" value={feed.sourceTimestamp} />
-            <MiniStat label="Updated" value={new Date(feed.asOf).toLocaleTimeString()} />
+            <MiniStat label={feed.sourceLabel} value={feed.sourceTimestamp} />
+            <MiniStat label="Replay engine update" value={new Date(feed.asOf).toLocaleTimeString()} />
           </div>
         </div>
         <div className="h-[160px]">
@@ -614,7 +619,7 @@ function TrainingSessionsPanel({ sessions }: { sessions: TrainingSession[] }) {
         </table>
       </div>
       <div className="mt-3 text-xs leading-5 text-slate-500">
-        This manager reflects local configs and checkpoint artifacts first; it does not simulate live training progress.
+        This manager reflects local configs and checkpoint artifacts first; it does not simulate running training progress.
       </div>
     </Panel>
   );
@@ -894,6 +899,13 @@ function heatmapCellClass(metric: string, value: number | null): string {
   }
   const positive = value > 0;
   return positive ? "border-emerald-300/25 bg-emerald-400/12 text-emerald-100" : "border-rose-300/25 bg-rose-400/12 text-rose-100";
+}
+
+function connectionLabel(connection: "connecting" | "replay" | "reconnecting" | "polling"): string {
+  if (connection === "replay") return "Replay connected";
+  if (connection === "reconnecting") return "Replay reconnecting";
+  if (connection === "polling") return "Polling replay";
+  return "Connecting replay";
 }
 
 function ChartTooltip({ active, payload, label, percentKeys = [] }: any) {

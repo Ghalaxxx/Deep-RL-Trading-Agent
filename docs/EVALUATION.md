@@ -73,7 +73,7 @@ Sharpe and Sortino are annualized from daily returns with a 252-period conventio
 
 The dashboard has two runtime modes:
 
-- `Demo mode`: uses local benchmark reports and cached data. It does not imply a trained PPO/SAC model or live trading.
+- `Demo mode`: uses local benchmark reports and cached historical replay data. It does not imply a trained PPO/SAC model or current-market execution.
 - `Checkpoint-backed`: becomes available when trained model artifacts are present under `models/`.
 
 Reward/training analytics are not simulated. If no checkpoint or training telemetry is available, the panel shows an awaiting-telemetry state instead of drawing artificial learning curves.

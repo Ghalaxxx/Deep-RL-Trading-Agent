@@ -2,7 +2,7 @@
 
 Deep RL Trading Agent is a production-minded experimentation platform for training PPO and SAC policies on adjusted market data with a custom Gymnasium trading environment. The system learns continuous position sizing from market observations, portfolio state, transaction costs, slippage, and risk-adjusted rewards. No hardcoded trading rules are used by the RL policy.
 
-The project is designed like an applied AI/quant engineering system: reproducible data preparation, leakage-safe feature construction, vectorized RL training, benchmark leaderboards, policy replay, live-feeling paper trading telemetry, and out-of-sample evaluation are all first-class workflows.
+The project is designed like an applied AI/quant engineering system: reproducible data preparation, leakage-safe feature construction, vectorized RL training, benchmark leaderboards, policy replay, historical market replay, paper trading telemetry, and out-of-sample evaluation are all first-class workflows.
 
 ## Design
 
@@ -23,7 +23,7 @@ flowchart LR
   J --> K["Reports: metrics and plots"]
   K --> O["FastAPI Product API"]
   O --> P["React Quant Dashboard"]
-  Q["Simulated live replay"] --> O
+  Q["Historical Market Replay"] --> O
   O --> R["Paper trading + risk controls"]
   M["Optuna Hyperopt"] --> F
   N["Curriculum Scheduler"] --> E
@@ -43,8 +43,9 @@ flowchart LR
 - Policy replay export for decision-level audit trails.
 - Lightweight action-sensitivity explainability by feature group.
 - Optuna hyperparameter search and W&B experiment tracking.
-- FastAPI + React product dashboard with WebSocket updates.
-- Live-feeling market feed labeled as live, simulated replay, or cached demo mode.
+- FastAPI + React product dashboard with WebSocket replay updates.
+- Historical Replay Engine that clearly labels 2024 out-of-sample market bars.
+- Optional delayed yfinance snapshot mode, labeled separately from historical replay.
 - Paper trading engine with cash, exposure, entry price, realized/unrealized PnL, costs, slippage, and no broker execution.
 - Risk management panel with drawdown, volatility, exposure limits, stop-loss threshold, risk status, and simulated kill switch.
 - Heuristic market regime detection and action explainability when no trained PPO/SAC checkpoint is available.
@@ -59,7 +60,7 @@ flowchart LR
 - RL trades include transaction costs and slippage; SMA and momentum baselines also pay position-change costs in benchmark reports.
 - Training reward is treated as an optimization signal, while final quality is judged with out-of-sample return, Sharpe, drawdown, trade statistics, and benchmark comparisons.
 - Dashboard demo mode uses benchmark reports and cached market data; trained PPO/SAC performance appears only after checkpoint artifacts are available.
-- Live-feeling dashboard updates are paper/demo telemetry only. The system does not connect to broker APIs and does not route real-money orders.
+- WebSocket replay updates are paper/demo telemetry only. The system does not connect to broker APIs and does not route real-money orders.
 - Heuristic regime and action-explanation panels are labeled as heuristic when no trained checkpoint is loaded.
 
 ## Product Dashboard
@@ -82,18 +83,18 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
-![Dashboard overview](docs/assets/dashboard-overview.png)
+![Dashboard overview with Historical Replay Engine](docs/assets/dashboard-overview.png)
 
 Mobile-responsive view:
 
-![Dashboard mobile](docs/assets/dashboard-mobile.png)
+![Dashboard mobile Historical Replay view](docs/assets/dashboard-mobile.png)
 
-The dashboard includes a live-status market feed, paper portfolio, equity curves, drawdown visualization, risk management guardrails, market regime detection, action explainability, PPO/SAC readiness, training session manager, strategy heatmap, experiment tracking, trade timeline, validation guardrails, and inference demo mode. In demo mode, panels are explicitly based on benchmark reports and local cached data rather than trained model claims.
+The dashboard includes a Historical Replay Engine, paper portfolio, equity curves, drawdown visualization, risk management guardrails, market regime detection, action explainability, PPO/SAC readiness, training session manager, strategy heatmap, experiment tracking, trade timeline, validation guardrails, and inference demo mode. In demo mode, panels are explicitly based on benchmark reports and local cached data rather than trained model claims.
 
 The product layer is deliberately not a real-money trading system:
 
-- `Simulated live replay` streams recent cached market bars through the same dashboard flow used for live-style updates.
-- `Live market data` can be attempted with yfinance by setting `RL_TRADING_FEED_MODE=live`; cached replay remains the default for reproducible demos.
+- `Historical Market Stream` replays cached 2024 out-of-sample market bars through the dashboard update loop.
+- `Delayed Market Snapshot` can be attempted with yfinance by setting `RL_TRADING_FEED_MODE=snapshot`; historical replay remains the default for reproducible demos.
 - `Paper trading simulation` applies transaction costs and slippage, tracks exposure and PnL, and blocks additional exposure when risk limits are breached.
 - PPO/SAC performance panels show `Awaiting checkpoint` until trained model artifacts and evaluation outputs exist.
 

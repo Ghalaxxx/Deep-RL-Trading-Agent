@@ -15,7 +15,7 @@ flowchart LR
   I --> J["Metrics + Replay"]
   J --> N["FastAPI Dashboard API"]
   N --> O["React Quant Dashboard"]
-  P["Cached Test Bars"] --> Q["Simulated Live Replay"]
+  P["Cached 2024 Test Bars"] --> Q["Historical Replay Engine"]
   Q --> N
   N --> R["WebSocket Events"]
   R --> O
@@ -44,7 +44,7 @@ flowchart LR
 - Replay exports provide a decision-level audit trail with action, position, return, reward, drawdown, and costs.
 - The product dashboard distinguishes benchmark/demo telemetry from checkpoint-backed model inference.
 - Paper trading telemetry is explicitly separated from broker execution. There is no real-money order routing or broker API adapter in the current system.
-- Live-feeling updates are labeled by source mode: live market data, simulated live replay, or cached demo mode.
+- Market update panels are labeled by source mode: historical market stream, delayed market snapshot, or cached demo mode.
 - PPO/SAC dashboard cells stay empty until checkpoint-backed evaluations are available.
 
 ## Reward Layer
@@ -61,8 +61,8 @@ These rewards are optimization signals. Production-style evaluation still comes 
 
 The FastAPI + React dashboard is a deployment-oriented view over the ML system:
 
-- local API endpoints expose cached data, benchmark leaderboards, model readiness, live-style replay telemetry, and dashboard state
-- a WebSocket endpoint streams `PRICE_UPDATE`, `PAPER_TRADE_UPDATE`, `RISK_UPDATE`, `REGIME_UPDATE`, `AGENT_SIGNAL`, and `EXPERIMENT_UPDATE` events
+- local API endpoints expose cached data, benchmark leaderboards, model readiness, historical replay telemetry, and dashboard state
+- a WebSocket replay endpoint emits `MARKET_REPLAY_UPDATE`, `PAPER_TRADE_UPDATE`, `RISK_UPDATE`, `REGIME_UPDATE`, `AGENT_SIGNAL`, and `EXPERIMENT_UPDATE` events
 - the paper trading engine simulates cash, position, exposure, entry price, realized/unrealized PnL, transaction costs, slippage, equity curve, and trade history
 - the risk layer monitors current drawdown, maximum drawdown, volatility, daily loss limit, max exposure, position limit, stop-loss threshold, rule violations, and simulated kill-switch state
 - heuristic regime detection uses moving-average slope, return volatility, price-vs-moving-average behavior, and drawdown context
@@ -71,19 +71,21 @@ The FastAPI + React dashboard is a deployment-oriented view over the ML system:
 - no trained PPO/SAC performance is shown until checkpoint artifacts exist
 - demo-mode panels are labeled as benchmark or awaiting-telemetry surfaces
 
-## Real-Time Telemetry
+## Market Replay Telemetry
 
-`backend/quant_product.py` owns the live-feeling product state. The default implementation uses recent cached test-period bars as a `Simulated live replay`. This gives the dashboard realistic update semantics without pretending to have exchange-grade real-time data. An opt-in yfinance near-live path is available with `RL_TRADING_FEED_MODE=live`; if it cannot fetch data, the product remains safe to run in replay mode.
+`backend/quant_product.py` owns the historical replay product state. The default implementation uses cached 2024 out-of-sample test-period bars as a `Historical Market Stream`. This gives the dashboard event-driven update semantics without implying current market streaming.
+
+An opt-in yfinance delayed snapshot path is available with `RL_TRADING_FEED_MODE=snapshot`; if it cannot fetch data, the product remains safe to run in historical replay mode.
 
 The primary transport is:
 
 ```text
 GET /api/dashboard?ticker=AAPL
-GET /api/live/AAPL?cursor=80
-WS  /ws/live/AAPL
+GET /api/replay/AAPL?cursor=80
+WS  /ws/replay/AAPL
 ```
 
-The frontend subscribes to the WebSocket and updates panels without a full page refresh. If the socket is unavailable, the documented fallback is polling the dashboard/live endpoints. The fallback should remain visibly labeled as demo/cached telemetry.
+The frontend subscribes to the replay WebSocket and updates panels without a full page refresh. If the socket is unavailable, the documented fallback is polling the dashboard or replay endpoints. The fallback should remain visibly labeled as historical replay or cached telemetry.
 
 ## Future Deployment Placeholder
 
@@ -95,4 +97,4 @@ A production deployment plan would add authentication, durable experiment storag
 - Add new benchmarks in `agents/baselines.py`.
 - Add experiment callbacks in `training/trainer.py`.
 - Add report outputs in `evaluation/replay.py` and `evaluation/visualizer.py`.
-- Add a production market-data provider behind the live feed interface while preserving explicit source-mode labels.
+- Add a production market-data provider behind the market feed interface while preserving explicit source-mode labels.

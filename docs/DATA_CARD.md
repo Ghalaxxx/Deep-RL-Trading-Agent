@@ -4,7 +4,7 @@
 
 Market data comes from `yfinance` with `auto_adjust=True`, so splits and dividends are reflected in adjusted OHLC prices.
 
-The dashboard product layer uses the local parquet cache and generated reports as its default source of truth. When the dashboard shows `Simulated live replay`, it is replaying recent cached bars through a live-style update loop. It is not claiming exchange-grade real-time data.
+The dashboard product layer uses the local parquet cache and generated reports as its default source of truth. When the dashboard shows `Historical Market Stream`, it is replaying cached 2024 out-of-sample bars through the replay engine. It is not claiming current market streaming.
 
 ## Universe
 
@@ -50,18 +50,18 @@ The manifest is written to `reports/data_manifest.csv` and includes row counts, 
 - Indicator warm-up rows are removed rather than imputed from future values.
 - Backtesting uses train/test windows where the test period begins after the training period.
 - `VecNormalize` statistics are saved with the trained model so inference uses training-time normalization.
-- Live-style replay uses test-period bars only for dashboard demonstration. It does not feed back into training or hyperparameter selection.
+- Historical replay uses test-period bars only for dashboard demonstration. It does not feed back into training or hyperparameter selection.
 - Paper trading state is derived from replayed bars and dashboard heuristics; it is not mixed into benchmark reports unless an explicit report-generation workflow is run.
 
 ## Product Data Modes
 
 The product API exposes feed mode labels so demos remain honest:
 
-- `Live market data`: optional yfinance near-live snapshot mode, enabled with `RL_TRADING_FEED_MODE=live`.
-- `Simulated live replay`: cached historical bars replayed through WebSocket/live endpoints.
-- `Cached demo mode`: static local cache/report state without live-style streaming.
+- `Historical Market Stream`: cached 2024 out-of-sample bars replayed through `/api/replay/{ticker}` and `/ws/replay/{ticker}`.
+- `Delayed Market Snapshot`: optional yfinance snapshot mode, enabled with `RL_TRADING_FEED_MODE=snapshot`.
+- `Cached Demo Mode`: static local cache/report state without replay transport.
 
-The current implementation defaults to `Simulated live replay` for selected symbols in the default universe. Live yfinance mode is intentionally opt-in so tests and demos remain reproducible when network data is unavailable or rate-limited.
+The current implementation defaults to `Historical Market Stream` for selected symbols in the default universe. Delayed snapshot mode is intentionally opt-in so tests and demos remain reproducible when network data is unavailable or rate-limited.
 
 ## Reliability Checks
 

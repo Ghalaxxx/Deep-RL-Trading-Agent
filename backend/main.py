@@ -17,15 +17,15 @@ from data.downloader import DEFAULT_TICKERS
 from evaluation.metrics import max_drawdown
 from backend.quant_product import (
     build_agent_signal,
-    build_live_feed,
+    build_market_feed,
     build_product_context,
     build_strategy_heatmap,
     build_training_sessions,
     detect_market_regime,
     evaluate_risk,
+    market_replay_event_bundle,
     normalize_ticker,
     simulate_paper_portfolio,
-    websocket_event_bundle,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,7 +70,7 @@ def dashboard(ticker: str = Query(default="AAPL"), cursor: int | None = Query(de
     best_row = ticker_benchmarks.sort_values(["sharpe", "annualized_return"], ascending=False).iloc[0]
     selected_strategy = str(best_row["strategy"])
     selected_curve = strategy_curves.get(selected_strategy, strategy_curves["buy_hold"])
-    live_feed = build_live_feed(context)
+    market_feed = build_market_feed(context)
     preliminary_signal = build_agent_signal(context)
     paper_portfolio = simulate_paper_portfolio(context, preliminary_signal)
     risk = evaluate_risk(paper_portfolio, context)
@@ -83,7 +83,7 @@ def dashboard(ticker: str = Query(default="AAPL"), cursor: int | None = Query(de
         "mode": _runtime_mode(),
         "ticker": normalized_ticker,
         "tickers": DEFAULT_TICKERS,
-        "liveFeed": live_feed,
+        "marketFeed": market_feed,
         "paperPortfolio": paper_portfolio,
         "risk": risk,
         "marketRegime": detect_market_regime(context),
@@ -101,12 +101,12 @@ def dashboard(ticker: str = Query(default="AAPL"), cursor: int | None = Query(de
         "strategyHeatmap": build_strategy_heatmap(benchmarks, normalized_ticker, MODELS_DIR),
         "inferenceDemo": _inference_demo(test_df, selected_curve, selected_strategy),
         "dataManifest": _records(manifest),
-        "realtime": {
-            "transport": "websocket",
-            "endpoint": f"/ws/live/{normalized_ticker}",
-            "fallback": "polling /api/dashboard",
+        "marketTransport": {
+            "transport": "websocket replay",
+            "endpoint": f"/ws/replay/{normalized_ticker}",
+            "fallback": "polling /api/replay",
             "eventTypes": [
-                "PRICE_UPDATE",
+                "MARKET_REPLAY_UPDATE",
                 "PAPER_TRADE_UPDATE",
                 "RISK_UPDATE",
                 "REGIME_UPDATE",
@@ -141,13 +141,13 @@ def experiments() -> dict[str, Any]:
     }
 
 
-@app.get("/api/live/{ticker}")
-def live_snapshot(ticker: str, cursor: int | None = Query(default=None)) -> dict[str, Any]:
+@app.get("/api/replay/{ticker}")
+def replay_snapshot(ticker: str, cursor: int | None = Query(default=None)) -> dict[str, Any]:
     try:
         context = build_product_context(ticker, ROOT, cursor=cursor)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    bundle = websocket_event_bundle(context.ticker, ROOT, cursor=context.cursor)
+    bundle = market_replay_event_bundle(context.ticker, ROOT, cursor=context.cursor)
     return {
         "ticker": context.ticker,
         "cursor": bundle["cursor"],
@@ -155,20 +155,20 @@ def live_snapshot(ticker: str, cursor: int | None = Query(default=None)) -> dict
     }
 
 
-@app.websocket("/ws/live/{ticker}")
-async def live_websocket(websocket: WebSocket, ticker: str) -> None:
+@app.websocket("/ws/replay/{ticker}")
+async def replay_websocket(websocket: WebSocket, ticker: str) -> None:
     await websocket.accept()
     try:
         normalized_ticker = normalize_ticker(ticker)
         cursor = None
         while True:
-            bundle = websocket_event_bundle(normalized_ticker, ROOT, cursor=cursor)
+            bundle = market_replay_event_bundle(normalized_ticker, ROOT, cursor=cursor)
             await websocket.send_json(
                 {
                     "ticker": normalized_ticker,
                     "cursor": bundle["cursor"],
                     "events": bundle["events"],
-                    "transport": "websocket",
+                    "transport": "websocket replay",
                 },
             )
             cursor = bundle["cursor"] + 1
@@ -215,7 +215,7 @@ def _portfolio_summary(curve: pd.DataFrame, best_row: pd.Series) -> dict[str, An
         "totalReturn": (ending_value / initial_value) - 1.0 if initial_value else 0.0,
         "sharpe": _safe_float(best_row["sharpe"]),
         "maxDrawdown": _safe_float(best_row["max_drawdown"]),
-        "status": "Benchmark demo, not live trading" if not _has_trained_checkpoint() else "Checkpoint-backed evaluation",
+        "status": "Benchmark demo, no broker execution" if not _has_trained_checkpoint() else "Checkpoint-backed evaluation",
     }
 
 
@@ -312,7 +312,7 @@ def _inference_demo(test_df: pd.DataFrame, curve: pd.DataFrame, strategy: str) -
     return {
         "mode": "checkpoint inference" if _has_trained_checkpoint() else "baseline demo",
         "strategy": strategy,
-        "message": "Current stream is a baseline exposure replay. Load a trained PPO/SAC checkpoint to run policy inference.",
+        "message": "Current sequence is a baseline exposure replay. Load a trained PPO/SAC checkpoint to run policy inference.",
         "steps": [
             {
                 "date": str(timestamp.date()) if hasattr(timestamp, "date") else str(timestamp),

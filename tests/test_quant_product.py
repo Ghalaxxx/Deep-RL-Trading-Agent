@@ -6,7 +6,7 @@ import pandas as pd
 from backend.quant_product import (
     ProductContext,
     build_agent_signal,
-    build_live_feed,
+    build_market_feed,
     detect_market_regime,
     evaluate_risk,
     simulate_paper_portfolio,
@@ -30,13 +30,15 @@ def _synthetic_context() -> ProductContext:
 
 def test_product_feed_regime_signal_and_paper_portfolio_are_labeled() -> None:
     context = _synthetic_context()
-    feed = build_live_feed(context)
+    feed = build_market_feed(context)
     regime = detect_market_regime(context)
     signal = build_agent_signal(context)
     paper = simulate_paper_portfolio(context, signal)
     risk = evaluate_risk(paper, context)
 
-    assert feed["mode"] == "Simulated live replay"
+    assert feed["mode"] == "Historical Market Stream"
+    assert feed["sourceKind"] == "historical_replay"
+    assert "2024 out-of-sample" in feed["dataBasis"]
     assert regime["method"] == "Heuristic regime detection"
     assert signal["mode"] == "Heuristic explanation"
     assert paper["mode"] == "Paper trading simulation"

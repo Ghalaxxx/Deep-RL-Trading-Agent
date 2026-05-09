@@ -4,8 +4,11 @@ export type MetricCard = {
   format: "percent" | "number" | "integer" | "days";
 };
 
-export type LiveFeed = {
-  mode: "Live market data" | "Simulated live replay" | "Cached demo mode";
+export type MarketFeed = {
+  mode: "Historical Market Stream" | "Delayed Market Snapshot" | "Cached Demo Mode";
+  sourceKind: "historical_replay" | "delayed_snapshot" | "cached_demo";
+  sourceLabel: string;
+  dataBasis: string;
   symbol: string;
   price: number;
   previousClose: number;
@@ -187,8 +190,8 @@ export type StrategyHeatmap = {
   }>;
 };
 
-export type RealtimeEvent =
-  | { type: "PRICE_UPDATE"; payload: LiveFeed }
+export type ReplayEvent =
+  | { type: "MARKET_REPLAY_UPDATE"; payload: MarketFeed }
   | { type: "PAPER_TRADE_UPDATE"; payload: PaperPortfolio }
   | { type: "RISK_UPDATE"; payload: RiskState }
   | { type: "REGIME_UPDATE"; payload: MarketRegime }
@@ -212,7 +215,7 @@ export type DashboardData = {
   };
   ticker: string;
   tickers: string[];
-  liveFeed: LiveFeed;
+  marketFeed: MarketFeed;
   paperPortfolio: PaperPortfolio;
   risk: RiskState;
   marketRegime: MarketRegime;
@@ -234,7 +237,7 @@ export type DashboardData = {
     message: string;
     steps: InferenceStep[];
   };
-  realtime: {
+  marketTransport: {
     transport: string;
     endpoint: string;
     fallback: string;
