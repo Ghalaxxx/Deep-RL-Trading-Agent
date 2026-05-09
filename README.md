@@ -114,13 +114,6 @@ The paper portfolio shows cash, position, exposure, realized/unrealized PnL, tot
   <img src="docs/assets/dashboard-paper-portfolio.png" alt="Paper portfolio panel" width="860">
 </p>
 
-### Risk And Regime
-
-Risk guardrails, regime detection, and action explanation are displayed as engineering controls and heuristic diagnostics, not profitability claims.
-
-<p align="center">
-  <img src="docs/assets/dashboard-risk-regime.png" alt="Risk management, regime detection, and explainability panels" width="860">
-</p>
 
 ### Strategy Comparison Heatmap
 
