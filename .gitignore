@@ -8,6 +8,9 @@ cache/
 models/
 runs/
 wandb/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
 *.pyc
 *.pkl
 *.zip

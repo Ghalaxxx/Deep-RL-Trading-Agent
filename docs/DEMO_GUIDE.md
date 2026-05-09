@@ -1,6 +1,6 @@
 # Demo Guide
 
-This guide gives you a clean path for presenting the project in an interview or portfolio walkthrough.
+This guide gives you a clean path for presenting the system in an interview, investor-style demo, or portfolio walkthrough.
 
 ## 1. Prepare Data
 
@@ -18,7 +18,7 @@ pytest
 
 The tests cover reward functions, metrics, Gymnasium environment compatibility, random-agent stepping, replay export, and action sensitivity.
 
-## 3. Train a Short Demo Model
+## 3. Generate Baselines
 
 Before training, generate a baseline leaderboard:
 
@@ -27,6 +27,8 @@ python train.py --benchmark-data
 ```
 
 This creates `reports/baseline_benchmarks.csv`, which is a useful comparison table for judging whether PPO/SAC adds value beyond simple strategies.
+
+The dashboard can be run before model training, but that mode is a benchmark/data demo. It should be described as an evaluation product shell, not as live trading or trained policy performance.
 
 ## 4. Train a Short Demo Model
 

@@ -22,6 +22,8 @@ Val:   2023-01-01 to 2023-12-31
 Test:  2024-01-01 to 2024-12-31
 ```
 
+The split design is intentionally chronological. Validation is used for model selection and tuning; the 2024 test period is reserved for final out-of-sample evaluation.
+
 ## Generated Features
 
 The observation builder produces 18 features per timestep:
@@ -46,3 +48,13 @@ The manifest is written to `reports/data_manifest.csv` and includes row counts, 
 - Indicator warm-up rows are removed rather than imputed from future values.
 - Backtesting uses train/test windows where the test period begins after the training period.
 - `VecNormalize` statistics are saved with the trained model so inference uses training-time normalization.
+
+## Reliability Checks
+
+`python train.py --prepare-data` validates the local cache before experiments:
+
+- all default tickers are present
+- train/validation/test splits are nonempty
+- required indicator columns exist
+- NaN counts are zero after warm-up trimming
+- cache paths are recorded for reproducibility

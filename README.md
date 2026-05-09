@@ -1,6 +1,8 @@
 # Deep RL Trading Agent
 
-Production-grade graduation project for training PPO and SAC agents on raw market data with a custom Gymnasium trading environment. The agent learns continuous position sizing from observations, transaction costs, slippage, and risk-adjusted rewards. No hardcoded trading rules are used by the RL policy.
+Deep RL Trading Agent is a production-minded experimentation platform for training PPO and SAC policies on adjusted market data with a custom Gymnasium trading environment. The system learns continuous position sizing from market observations, portfolio state, transaction costs, slippage, and risk-adjusted rewards. No hardcoded trading rules are used by the RL policy.
+
+The project is designed like an applied AI/quant engineering system: reproducible data preparation, leakage-safe feature construction, vectorized RL training, benchmark leaderboards, policy replay, and out-of-sample evaluation are all first-class workflows.
 
 ## Design
 
@@ -37,6 +39,44 @@ flowchart LR
 - Policy replay export for decision-level audit trails.
 - Lightweight action-sensitivity explainability by feature group.
 - Optuna hyperparameter search and W&B experiment tracking.
+
+## Engineering Safeguards
+
+- Indicator warm-up rows are dropped instead of backward-filled, preventing early observations from receiving future indicator values.
+- Chronological train/validation/test splits keep 2024 reserved for final out-of-sample evaluation.
+- Walk-forward splits use non-overlapping train/test boundaries.
+- Policies trained with `VecNormalize` are evaluated and replayed with saved normalization statistics when `models/vecnormalize.pkl` is present.
+- RL trades include transaction costs and slippage; SMA and momentum baselines also pay position-change costs in benchmark reports.
+- Training reward is treated as an optimization signal, while final quality is judged with out-of-sample return, Sharpe, drawdown, trade statistics, and benchmark comparisons.
+- Dashboard demo mode uses benchmark reports and cached market data; trained PPO/SAC performance appears only after checkpoint artifacts are available.
+
+## Product Dashboard
+
+The repository includes a FastAPI + React dashboard for a product-grade trading intelligence experience.
+
+Run the API:
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Run the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`.
+
+![Dashboard overview](docs/assets/dashboard-overview.png)
+
+Mobile-responsive view:
+
+![Dashboard mobile](docs/assets/dashboard-mobile.png)
+
+The dashboard includes equity curves, drawdown visualization, benchmark comparison, PPO/SAC readiness, experiment tracking, trade timeline, validation guardrails, and inference demo mode. In demo mode, panels are explicitly based on benchmark reports and local cached data rather than trained model claims.
 
 ## Quick Start
 
@@ -107,24 +147,26 @@ docs/                 Architecture, data card, and demo guide
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Card](docs/DATA_CARD.md)
+- [Evaluation Methodology](docs/EVALUATION.md)
+- [Product Dashboard](docs/DASHBOARD.md)
 - [Demo Guide](docs/DEMO_GUIDE.md)
-- [Research Notes](docs/RESEARCH_NOTES.md)
 
-## Results Table Template
+## Results Workflow
 
-Replace these placeholder values with your final walk-forward test results after training.
+Use the generated baseline and evaluation reports as the source of truth for model claims. A trained PPO/SAC run should be reported only after it is evaluated out-of-sample and compared against simple baselines after costs.
 
 | Strategy     | Annual Return | Sharpe | Max DD  | Win Rate |
 |--------------|---------------|--------|---------|----------|
-| PPO Agent    | +18.3%        | 1.42   | -12.1%  | 54.2%    |
-| SAC Agent    | +15.7%        | 1.28   | -14.3%  | 51.8%    |
-| Buy & Hold   | +12.1%        | 0.87   | -23.4%  | N/A      |
-| MA Crossover | +6.3%         | 0.51   | -18.2%  | 47.1%    |
-| Random Agent | -3.2%         | -0.21  | -41.2%  | 49.8%    |
+| PPO Agent    | Run evaluation | From report | From report | From report |
+| SAC Agent    | Run evaluation | From report | From report | From report |
+| Buy & Hold   | `reports/baseline_benchmarks.csv` | From report | From report | From report |
+| SMA Crossover | `reports/baseline_benchmarks.csv` | From report | From report | From report |
+| Random Agent | `reports/baseline_benchmarks.csv` | From report | From report | From report |
 
-## Interview Talking Points
+## Engineering Talking Points
 
-- Reward shaping balances risk-adjusted returns, turnover penalties, and drawdown control.
-- Walk-forward evaluation avoids leakage by fitting on past windows and testing only on future windows.
-- PPO is the stable on-policy baseline; SAC adds an off-policy continuous-control comparison.
-- Curriculum learning starts on lower-volatility regimes before exposing the policy to crisis periods.
+- Reward shaping balances risk-adjusted returns, turnover penalties, and drawdown control without using handcrafted entry/exit rules.
+- Evaluation avoids leakage by fitting on past windows and testing only on future windows.
+- PPO provides a stable on-policy baseline; SAC adds an off-policy continuous-control comparison.
+- Curriculum learning can start on lower-volatility regimes before exposing the policy to broader market stress.
+- Replay exports make policy behavior inspectable at the decision level, which helps debug failure modes before trusting aggregate metrics.
