@@ -146,11 +146,7 @@ Training sessions are derived from local configs and checkpoint artifacts; the d
   <img src="docs/assets/dashboard-training-session-manager.png" alt="Training session manager" width="860">
 </p>
 
-### Mobile View
 
-<p align="center">
-  <img src="docs/assets/dashboard-mobile.png" alt="Mobile Historical Replay dashboard view" width="360">
-</p>
 
 ## Quick Start
 
