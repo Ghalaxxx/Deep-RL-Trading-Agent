@@ -1,0 +1,38 @@
+environment:
+  window_size: 30
+  initial_cash: 100000
+  transaction_cost: 0.001
+  slippage: 0.0005
+  reward_function: sharpe
+  episode_length: 252
+
+data:
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - TSLA
+    - SPY
+    - QQQ
+    - GLD
+    - BTC-USD
+  start: "2015-01-01"
+  end: "2025-01-01"
+  train:
+    start: "2015-01-01"
+    end: "2022-12-31"
+  val:
+    start: "2023-01-01"
+    end: "2023-12-31"
+  test:
+    start: "2024-01-01"
+    end: "2024-12-31"
+
+paths:
+  models: models
+  vecnormalize: models/vecnormalize.pkl
+  cache: cache
+
+wandb:
+  mode: online
